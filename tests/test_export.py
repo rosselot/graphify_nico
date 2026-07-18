@@ -299,6 +299,25 @@ def test_to_html_contested_stale_node_gets_dashed_desaturated_ring():
     assert "code changed" in ann["title"]
 
 
+def test_to_html_summary_appears_in_hover_title():
+    """File-level summary lands in vis.js title (hover) and RAW_NODES.summary."""
+    G = make_graph()
+    communities = cluster(G)
+    nid = next(iter(G.nodes))
+    G.nodes[nid]["summary"] = "Loads widgets from disk."
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.html"
+        to_html(G, communities, str(out), learning_overlay={})
+        content = out.read_text()
+    nodes = {n["id"]: n for n in _vis_nodes_from_html(content)}
+    ann = nodes[nid]
+    assert ann["summary"] == "Loads widgets from disk."
+    assert "Loads widgets from disk." in ann["title"]
+    other = next(n for i, n in nodes.items() if i != nid)
+    assert "summary" not in other
+    assert "Summary:" in content  # info-panel template
+
+
 def test_to_html_unannotated_identical_to_pre_feature():
     """With no overlay, the HTML is byte-identical whether learning_overlay is
     omitted or passed empty — no learning fields leak into the un-annotated render."""

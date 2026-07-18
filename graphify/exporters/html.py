@@ -126,6 +126,7 @@ const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({{
   font: n.font, title: n.title,
   _community: n.community, _community_name: n.community_name,
   _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
+  _summary: n.summary || '',
 }})));
 
 const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({{
@@ -182,6 +183,7 @@ function showInfo(nodeId) {{
     <div class="field">Type: ${{esc(n._file_type || 'unknown')}}</div>
     <div class="field">Community: ${{esc(n._community_name)}}</div>
     <div class="field">Source: ${{esc(n._source_file || '-')}}</div>
+    ${{n._summary ? `<div class="field">Summary: ${{esc(n._summary)}}</div>` : ''}}
     <div class="field">Degree: ${{n._degree}}</div>
     ${{neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${{neighborIds.length}})</div><div id="neighbors-list">${{neighborItems}}</div>` : ''}}
   `;
@@ -437,19 +439,25 @@ def to_html(
             size = 10 + 30 * (deg / max_deg)
             # Only show label for high-degree nodes by default; others show on hover
             font_size = 12 if deg >= max_deg * 0.15 else 0
+        # Hover tooltip (vis.js `title`): label, optional file summary, optional lesson.
+        title_lines = [label]
+        summary = sanitize_label(str(data.get("summary") or "")).strip()
+        if summary:
+            title_lines.append(summary)
         node = {
             "id": node_id,
             "label": label,
             "color": {"background": color, "border": color, "highlight": {"background": "#ffffff", "border": color}},
             "size": round(size, 1),
             "font": {"size": font_size, "color": "#ffffff"},
-            "title": _html.escape(label),
             "community": cid,
             "community_name": sanitize_label((community_labels or {}).get(cid, f"Community {cid}")),
             "source_file": sanitize_label(str(data.get("source_file") or "")),
             "file_type": data.get("file_type", ""),
             "degree": deg,
         }
+        if summary:
+            node["summary"] = summary
         # Conditional learning fields — only present for annotated nodes, so
         # un-annotated output keeps the exact pre-feature node dict shape.
         entry = learning_overlay.get(str(node_id)) if learning_overlay else None
@@ -479,7 +487,8 @@ def to_html(
                 lesson = f"Lesson: {status} ({entry.get('uses', 0)} useful)"
             if stale:
                 lesson += " [code changed — re-verify]"
-            node["title"] = _html.escape(label) + "\n" + _html.escape(sanitize_label(lesson))
+            title_lines.append(sanitize_label(lesson))
+        node["title"] = "\n".join(_html.escape(line) for line in title_lines)
         vis_nodes.append(node)
 
     # Build edges list. Restore original edge direction from _src/_tgt

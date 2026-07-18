@@ -1269,14 +1269,17 @@ def _build_server(graph_path: str):
             return f"No node matching '{label}' found."
         nid, d = matches[0]
         # Sanitise every LLM-derived field before concatenation (F-010).
-        return "\n".join([
+        lines = [
             f"Node: {sanitize_label(d.get('label', nid))}",
             f"  ID: {sanitize_label(nid)}",
             f"  Source: {sanitize_label(str(d.get('source_file', '')))} {sanitize_label(str(d.get('source_location', '')))}",
             f"  Type: {sanitize_label(str(d.get('file_type', '')))}",
             f"  Community: {sanitize_label(str(d.get('community_name') or d.get('community', '')))}",
-            f"  Degree: {G.degree(nid)}",
-        ])
+        ]
+        if d.get("summary"):
+            lines.append(f"  Summary: {sanitize_label(str(d['summary']))}")
+        lines.append(f"  Degree: {G.degree(nid)}")
+        return "\n".join(lines)
 
     def _tool_get_neighbors(arguments: dict) -> str:
         label = arguments["label"].lower()

@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="900" height="360"
+     viewBox="0 0 900 360"
+     style="background-color:#0d1117; display:block;">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4db18f" stop-opacity="0.6"/>
+      <stop offset="60%" stop-color="#4db18f" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#4db18f" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      .label {
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 11px;
+        fill: #c9d1d9;
+        text-anchor: middle;
+        dominant-baseline: middle;
+        pointer-events: none;
+      }
+    </style>
+  </defs>
+
+  <!-- Dim base edges -->
+
+  <line x1="840.0" y1="62.6" x2="703.1" y2="152.9" stroke="#2a3a3a" stroke-width="2" stroke-linecap="round"/>
+  <line x1="840.0" y1="62.6" x2="655.0" y2="60.0" stroke="#2a3a3a" stroke-width="2" stroke-linecap="round"/>
+  <line x1="703.1" y1="152.9" x2="655.0" y2="60.0" stroke="#2a3a3a" stroke-width="2" stroke-linecap="round"/>
+  <line x1="703.1" y1="152.9" x2="488.4" y2="160.7" stroke="#2a3a3a" stroke-width="2" stroke-linecap="round"/>
+  <line x1="655.0" y1="60.0" x2="488.4" y2="160.7" stroke="#2a3a3a" stroke-width="2" stroke-linecap="round"/>
+  <line x1="488.4" y1="160.7" x2="253.6" y2="234.9" stroke="#2a3a3a" stroke-width="2" stroke-linecap="round"/>
+  <line x1="253.6" y1="234.9" x2="60.0" y2="300.0" stroke="#2a3a3a" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Dim base nodes -->
+
+  <circle cx="840.0" cy="62.6" r="4" fill="#2a3a3a"/>
+  <circle cx="703.1" cy="152.9" r="4" fill="#2a3a3a"/>
+  <circle cx="655.0" cy="60.0" r="4" fill="#2a3a3a"/>
+  <circle cx="488.4" cy="160.7" r="4" fill="#2a3a3a"/>
+  <circle cx="253.6" cy="234.9" r="4" fill="#2a3a3a"/>
+  <circle cx="60.0" cy="300.0" r="4" fill="#2a3a3a"/>
+
+  <!-- Animated path edges -->
+
+  <line x1="840.0" y1="62.6" x2="655.0" y2="60.0"
+        stroke="#4db18f" stroke-width="2"
+        stroke-linecap="round"
+        stroke-dasharray="185.06" stroke-dashoffset="185.06">
+    <animate attributeName="stroke-dashoffset"
+             values="185.0571679800351; 185.0571679800351; 0; 0; 185.0571679800351"
+             keyTimes="0; 0.05; 0.085; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </line>
+
+  <line x1="655.0" y1="60.0" x2="488.4" y2="160.7"
+        stroke="#4db18f" stroke-width="2"
+        stroke-linecap="round"
+        stroke-dasharray="194.61" stroke-dashoffset="194.61">
+    <animate attributeName="stroke-dashoffset"
+             values="194.61485235573767; 194.61485235573767; 0; 0; 194.61485235573767"
+             keyTimes="0; 0.085; 0.12; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </line>
+
+  <line x1="488.4" y1="160.7" x2="253.6" y2="234.9"
+        stroke="#4db18f" stroke-width="2"
+        stroke-linecap="round"
+        stroke-dasharray="246.25" stroke-dashoffset="246.25">
+    <animate attributeName="stroke-dashoffset"
+             values="246.2470250251023; 246.2470250251023; 0; 0; 246.2470250251023"
+             keyTimes="0; 0.12; 0.155; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </line>
+
+  <line x1="253.6" y1="234.9" x2="60.0" y2="300.0"
+        stroke="#4db18f" stroke-width="2"
+        stroke-linecap="round"
+        stroke-dasharray="204.28" stroke-dashoffset="204.28">
+    <animate attributeName="stroke-dashoffset"
+             values="204.2805304408045; 204.2805304408045; 0; 0; 204.2805304408045"
+             keyTimes="0; 0.155; 0.19; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Animated path nodes -->
+
+  <circle cx="840.0" cy="62.6" r="14" fill="url(#glow)" opacity="0">
+    <animate attributeName="opacity"
+             values="0; 0; 1; 1; 0"
+             keyTimes="0; 0.05; 0.055; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="655.0" cy="60.0" r="14" fill="url(#glow)" opacity="0">
+    <animate attributeName="opacity"
+             values="0; 0; 1; 1; 0"
+             keyTimes="0; 0.085; 0.09; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="488.4" cy="160.7" r="14" fill="url(#glow)" opacity="0">
+    <animate attributeName="opacity"
+             values="0; 0; 1; 1; 0"
+             keyTimes="0; 0.12; 0.125; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="253.6" cy="234.9" r="14" fill="url(#glow)" opacity="0">
+    <animate attributeName="opacity"
+             values="0; 0; 1; 1; 0"
+             keyTimes="0; 0.155; 0.16; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="60.0" cy="300.0" r="14" fill="url(#glow)" opacity="0">
+    <animate attributeName="opacity"
+             values="0; 0; 1; 1; 0"
+             keyTimes="0; 0.19; 0.195; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+
+  <circle cx="840.0" cy="62.6" r="4" fill="#2a3a3a">
+    <animate attributeName="fill"
+             values="#2a3a3a; #2a3a3a; #7ee8c8; #4db18f; #4db18f; #2a3a3a"
+             keyTimes="0; 0.05; 0.055; 0.07; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+    <animate attributeName="r"
+             values="4; 4; 8; 5.6; 5.6; 4"
+             keyTimes="0; 0.05; 0.055; 0.07; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="655.0" cy="60.0" r="4" fill="#2a3a3a">
+    <animate attributeName="fill"
+             values="#2a3a3a; #2a3a3a; #7ee8c8; #4db18f; #4db18f; #2a3a3a"
+             keyTimes="0; 0.085; 0.09; 0.105; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+    <animate attributeName="r"
+             values="4; 4; 8; 5.6; 5.6; 4"
+             keyTimes="0; 0.085; 0.09; 0.105; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="488.4" cy="160.7" r="4" fill="#2a3a3a">
+    <animate attributeName="fill"
+             values="#2a3a3a; #2a3a3a; #7ee8c8; #4db18f; #4db18f; #2a3a3a"
+             keyTimes="0; 0.12; 0.125; 0.14; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+    <animate attributeName="r"
+             values="4; 4; 8; 5.6; 5.6; 4"
+             keyTimes="0; 0.12; 0.125; 0.14; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="253.6" cy="234.9" r="4" fill="#2a3a3a">
+    <animate attributeName="fill"
+             values="#2a3a3a; #2a3a3a; #7ee8c8; #4db18f; #4db18f; #2a3a3a"
+             keyTimes="0; 0.155; 0.16; 0.175; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+    <animate attributeName="r"
+             values="4; 4; 8; 5.6; 5.6; 4"
+             keyTimes="0; 0.155; 0.16; 0.175; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="60.0" cy="300.0" r="4" fill="#2a3a3a">
+    <animate attributeName="fill"
+             values="#2a3a3a; #2a3a3a; #7ee8c8; #4db18f; #4db18f; #2a3a3a"
+             keyTimes="0; 0.19; 0.195; 0.21; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+    <animate attributeName="r"
+             values="4; 4; 8; 5.6; 5.6; 4"
+             keyTimes="0; 0.19; 0.195; 0.21; 0.95; 1.0"
+             dur="10.0s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Node labels -->
+
+  <text x="840.0" y="50.6" class="label">A</text>
+  <text x="655.0" y="48.0" class="label">C</text>
+  <text x="488.4" y="148.7" class="label">D</text>
+  <text x="253.6" y="222.9" class="label">E</text>
+  <text x="60.0" y="288.0" class="label">F</text>
+
+</svg>

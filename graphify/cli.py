@@ -907,6 +907,22 @@ def dispatch_command(cmd: str) -> None:
             nodes_returned=hops,
         )
 
+    elif cmd == "summarize":
+        # Opt-in file-level summaries on graph.json nodes (docs/node-summaries-rfc.md).
+        graph_path = _default_graph_path()
+        args = sys.argv[2:]
+        for i, a in enumerate(args):
+            if a == "--graph" and i + 1 < len(args):
+                graph_path = args[i + 1]
+        gp = Path(graph_path).resolve()
+        if not gp.exists():
+            print(f"error: graph file not found: {gp}", file=sys.stderr)
+            sys.exit(1)
+        _enforce_graph_size_cap_or_exit(gp)
+        from graphify.summarize import summarize_graph_file
+        n = summarize_graph_file(gp)
+        print(f"Summarized {n} file-level node(s) -> {gp}")
+
     elif cmd == "explain":
         if len(sys.argv) < 3:
             print('Usage: graphify explain "<node>" [--graph path]', file=sys.stderr)
@@ -947,6 +963,8 @@ def dispatch_command(cmd: str) -> None:
         )
         print(f"  Type:      {d.get('file_type', '')}")
         print(f"  Community: {d.get('community_name') or d.get('community', '')}")
+        if d.get("summary"):
+            print(f"  Summary:   {d['summary']}")
         # Work-memory overlay: a derived experiential hint from `graphify reflect`,
         # merged in display-only from the .graphify_learning.json sidecar next to
         # graph.json. No line when the node has no overlay entry.
