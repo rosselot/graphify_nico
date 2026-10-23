@@ -18,14 +18,14 @@ _MD_LINKABLE_EXTS = {".md", ".mdx", ".qmd", ".markdown", ".rst", ".txt"}
 
 # Vault / PKM / Task / Temporal extraction patterns
 _TASK_CHECKBOX_RE = re.compile(r'^(\s*)[-*+]\s+\[([ xX/\->?!])\]\s+(.+)$')
-_DATAVIEW_INLINE_RE = re.compile(r'\[([a-zA-Z0-9_\-]+)::\s*([^\]]+)\]')
+_DATAVIEW_INLINE_RE = re.compile(r'\[([a-zA-Z0-9_\-]+)::\s*(\[\[[^\]]+\]\]|[^\]]+)\]')
 _OBSIDIAN_DUE_RE = re.compile(r'📅\s*(\d{4}-\d{2}-\d{2})')
 _OBSIDIAN_SCHED_RE = re.compile(r'⏳\s*(\d{4}-\d{2}-\d{2})')
 _ISO_DATE_RE = re.compile(r'\b(20\d{2}-\d{2}-\d{2})\b')
 _US_DATE_RE = re.compile(r'\b(0[1-9]|1[0-2])[/-](0[1-9]|[12]\d|3[01])[/-](20\d{2})\b')
 _COMPACT_MMDDYYYY_RE = re.compile(r'\b(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(20\d{2})\b')
 _PARTIAL_MON_DAY_TIME_RE = re.compile(
-    r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:\s+at\s+(\d{1,2})[:.\-](\d{2}))?',
+    r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?!\d)(?:\s+at\s+(\d{1,2})[:.\-](\d{2}))?',
     re.IGNORECASE,
 )
 _EXCALIDRAW_TS_RE = re.compile(r'(20\d{2}-\d{2}-\d{2})\s+(\d{2})[.:](\d{2})(?:[.:](\d{2}))?')
@@ -403,6 +403,7 @@ def extract_vault_markdown(path: Path) -> dict:
         else:
             note_type = "note"
 
+    file_node["_origin"] = "ast"
     file_node["node_role"] = note_type
     file_node["status"] = str(fm.get("status") or "active")
     file_node["execution_mode"] = str(fm.get("execution_mode") or "independent")
@@ -544,6 +545,7 @@ def extract_vault_markdown(path: Path) -> dict:
             "source_file": str_path,
             "source_location": f"L{line_num}",
             "temporal_envelope": temporal,
+            "_origin": "ast",
         }
         nodes.append(task_node)
 
