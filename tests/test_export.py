@@ -180,6 +180,24 @@ def test_to_html_neighbor_links_have_no_inline_onclick_xss():
     assert "closest('.neighbor-link')" in html
 
 
+def test_to_html_selection_cascade_dims_children_by_depth():
+    """Selecting a node runs a timed hop-level opacity wave (~2s), no recolor."""
+    G = make_graph()
+    communities = cluster(G)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "graph.html"
+        to_html(G, communities, str(out))
+        html = out.read_text()
+    assert "function applyCascade(" in html
+    assert "function clearCascade(" in html
+    assert "function _hopDepths(" in html
+    assert "getConnectedNodes(id)" in html
+    assert "CASCADE_MS = 2000" in html
+    assert "OUTSIDE_DIM = 0.35" in html
+    assert "MAX_WAVE = 6" in html
+    assert "selectAndInspect(" in html
+
+
 def test_to_html_pins_visjs_version_with_sri():
     """vis-network script tag must use a pinned versioned URL with a sha384
     Subresource Integrity hash and crossorigin=anonymous. Without this,

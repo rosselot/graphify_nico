@@ -61,6 +61,8 @@ def _is_file_node(G: nx.Graph, node_id: str) -> bool:
     from god nodes, surprising connections, and knowledge gap reporting.
     """
     attrs = G.nodes[node_id]
+    if attrs.get("node_role") in ("project", "task", "idea", "decision", "event_session"):
+        return False
     label = attrs.get("label", "")
     if not label:
         return False
@@ -163,6 +165,8 @@ def _is_concept_node(G: nx.Graph, node_id: str) -> bool:
     - source_file doesn't look like a real file path (no extension)
     """
     data = G.nodes[node_id]
+    if data.get("node_role") in ("project", "task", "idea", "decision", "event_session"):
+        return False
     source = data.get("source_file", "")
     if not source:
         return True

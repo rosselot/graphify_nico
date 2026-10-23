@@ -71,6 +71,33 @@ _FILE_TYPE_SYNONYMS = {
     "data_source": "concept",
     "gotcha": "concept",
     "framework": "concept",
+    "project": "document",
+    "task": "concept",
+    "idea": "concept",
+    "decision": "rationale",
+    "milestone": "concept",
+    "event_session": "concept",
+    "blocker": "concept",
+    "area": "document",
+    "resource": "document",
+    "daily": "document",
+}
+
+_WORKFLOW_RELATION_PRIORITY = {
+    "blocks": 100,
+    "depends_on": 95,
+    "temporally_correlated_with": 90,
+    "parallel_with": 85,
+    "subtask_of": 80,
+    "rationale_for": 75,
+    "implements": 60,
+    "calls": 55,
+    "shares_data_with": 50,
+    "references": 30,
+    "cites": 25,
+    "conceptually_related_to": 20,
+    "semantically_similar_to": 15,
+    "contains": 10,
 }
 
 
@@ -430,6 +457,7 @@ def build_from_json(extraction: dict, *, directed: bool = False, root: str | Pat
             node["file_type"] = "concept"
         ft = node.get("file_type", "")
         if ft and ft not in {"code", "document", "paper", "image", "rationale", "concept"}:
+            node.setdefault("node_role", ft)
             node["file_type"] = _FILE_TYPE_SYNONYMS.get(ft, "concept")
 
     # Canonicalize hyperedge member lists (#1561): producers sometimes key the
@@ -777,6 +805,22 @@ def build_from_json(extraction: dict, *, directed: bool = False, root: str | Pat
             if existing.get("relation") == attrs.get("relation") and (
                 existing.get("_src") == tgt and existing.get("_tgt") == src
             ):
+                continue
+        if G.has_edge(src, tgt):
+            existing = edge_data(G, src, tgt)
+            prev_rels = list(existing.get("relations_list") or ([existing["relation"]] if existing.get("relation") else []))
+            new_rel = attrs.get("relation")
+            if new_rel and new_rel not in prev_rels:
+                prev_rels.append(new_rel)
+            attrs["relations_list"] = prev_rels
+            old_prio = _WORKFLOW_RELATION_PRIORITY.get(str(existing.get("relation") or ""), 40)
+            new_prio = _WORKFLOW_RELATION_PRIORITY.get(str(new_rel or ""), 40)
+            if old_prio > new_prio:
+                # Preserve higher-priority workflow relation & direction while recording relations_list
+                merged = dict(attrs)
+                merged.update(existing)
+                merged["relations_list"] = prev_rels
+                G.add_edge(src, tgt, **merged)
                 continue
         G.add_edge(src, tgt, **attrs)
     hyperedges = extraction.get("hyperedges", [])

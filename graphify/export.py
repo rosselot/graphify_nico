@@ -457,6 +457,9 @@ def to_obsidian(
     output_dir: str,
     community_labels: dict[int, str] | None = None,
     cohesion: dict[int, float] | None = None,
+    *,
+    community_subdir: str | None = None,
+    skip_node_notes: bool = False,
 ) -> int:
     """Export graph as an Obsidian vault - one .md file per node with [[wikilinks]],
     plus one _COMMUNITY_name.md overview note per community (sorted to top by underscore prefix).
@@ -529,9 +532,11 @@ def to_obsidian(
         "image": "graphify/image",
     }
 
-    # Write one .md file per node
+    # Write one .md file per node (unless skip_node_notes=True for PARA vault-safe mode)
     node_notes_written = 0
     for node_id, data in G.nodes(data=True):
+        if skip_node_notes:
+            break
         label = data.get("label", node_id)
         cid = node_community.get(node_id)
         community_name = (
@@ -722,6 +727,8 @@ def to_obsidian(
                 )
 
         fname = community_filename[cid] + ".md"
+        if community_subdir:
+            fname = f"{community_subdir.strip('/')}/{fname}"
         if _owned_write(fname, "\n".join(lines)):
             community_notes_written += 1
 
@@ -958,6 +965,268 @@ def to_canvas(
 
     canvas_data = {"nodes": canvas_nodes, "edges": canvas_edges}
     Path(output_path).write_text(json.dumps(canvas_data, indent=2), encoding="utf-8")  # nosec
+
+
+def to_workflow_canvas(
+    G: nx.Graph,
+    communities: dict[int, list[str]],
+    output_path: str,
+    community_labels: dict[int, str] | None = None,
+    temporal_episodes: list[dict] | None = None,
+) -> dict:
+    """Export a 3-Plane Topological Workflow & Knowledge Obsidian Canvas (.canvas).
+
+    Adapts Graphify's canvas exporter using Agentic Seed's topological wave layout:
+    - Sequential task dependencies (`blocks` / `depends_on`) flow Left -> Right along
+      the X-axis (`wave_depth = 0, 1, 2...`, `fromSide: "right"`, `toSide: "left"`, `toEnd: "arrow"`).
+    - Parallel tasks & ideas sharing the same topological wave stack vertically along
+      the Y-axis inside their project/community swimlane.
+    - Cross-channel temporal episodes (voice + image + text captured in the same window)
+      render in a dedicated Temporal Correlation swimlane with Purple ("6") provenance cards.
+    - JSON Canvas 1.0 semantic palette:
+      "4" (Green)  = Ready Frontier (Wave 0 unblocked) or Completed
+      "2" (Orange) = Sequential Dependent (Wave >= 1) or Active Critical Path
+      "3" (Yellow) = Parallel Idea / Brainstorm
+      "1" (Red)    = Blocked / External Blocker / AMBIGUOUS Review Needed
+      "5" (Cyan)   = Project / Knowledge Reference Hub
+      "6" (Purple) = Cross-Channel Temporal Session / Decision Rationale
+    """
+    WORKFLOW_RELS = {"blocks", "depends_on", "subtask_of"}
+    dep_parents: dict[str, set[str]] = {str(n): set() for n in G.nodes()}
+    dep_children: dict[str, set[str]] = {str(n): set() for n in G.nodes()}
+
+    for u, v, edata in G.edges(data=True):
+        rel = edata.get("relation", "")
+        src = str(edata.get("_src", u))
+        tgt = str(edata.get("_tgt", v))
+        if src not in dep_parents or tgt not in dep_parents or src == tgt:
+            continue
+        if rel == "blocks":
+            dep_parents[tgt].add(src)
+            dep_children[src].add(tgt)
+        elif rel == "depends_on":
+            dep_parents[src].add(tgt)
+            dep_children[tgt].add(src)
+
+    # Compute cycle-safe longest-path topological wave depth (like agentic_seed/src/layout.ts)
+    wave_depth: dict[str, int] = {}
+    visiting: set[str] = set()
+    cycle_nodes: set[str] = set()
+
+    def _get_depth(nid: str) -> int:
+        if nid in wave_depth:
+            return wave_depth[nid]
+        if nid in visiting:
+            cycle_nodes.add(nid)
+            return 0
+        visiting.add(nid)
+        parents = dep_parents.get(nid, set())
+        if not parents:
+            d = 0
+        else:
+            d = max((_get_depth(p) + 1 for p in parents), default=0)
+        visiting.remove(nid)
+        wave_depth[nid] = min(d, 12)
+        return wave_depth[nid]
+
+    for nid in G.nodes():
+        _get_depth(str(nid))
+
+    if not communities and G.number_of_nodes() > 0:
+        communities = {0: [str(n) for n in G.nodes()]}
+
+    canvas_nodes: list[dict] = []
+    canvas_edges: list[dict] = []
+    placed_nodes: set[str] = set()
+
+    CARD_W = 250
+    CARD_H = 110
+    COL_GAP = 80
+    ROW_GAP = 28
+    GROUP_GAP = 70
+    current_gy = 0
+
+    def _node_canvas_color(nid: str, attrs: dict, depth: int) -> str:
+        role = str(attrs.get("node_role") or attrs.get("file_type") or "note").lower()
+        status = str(attrs.get("task_status") or attrs.get("status") or "").lower()
+        exec_mode = str(attrs.get("execution_mode") or "").lower()
+        conf = str(attrs.get("confidence") or "EXTRACTED").upper()
+        if nid in cycle_nodes or status in ("blocked", "needs_review") or conf == "AMBIGUOUS" or role == "blocker":
+            return "1"  # Red
+        if role in ("idea",) or exec_mode == "parallel":
+            return "3"  # Yellow
+        if role in ("decision", "rationale", "event_session"):
+            return "6"  # Purple
+        if role == "task":
+            if status == "completed" or depth == 0:
+                return "4"  # Green (Ready Frontier or Completed)
+            return "2"      # Orange (Sequential wave >= 1)
+        return "5"          # Cyan (Project / Document / Knowledge Hub)
+
+    sorted_cids = sorted(communities.keys())
+    for cid in sorted_cids:
+        members = [str(m) for m in communities[cid] if m in G]
+        if not members:
+            continue
+        comm_name = (
+            community_labels.get(cid, f"Workstream / Cluster {cid}")
+            if community_labels and cid is not None
+            else f"Workstream / Cluster {cid}"
+        )
+
+        # Partition members into waves (0, 1, 2...) and a parallel idea column
+        waves: dict[int, list[str]] = {}
+        for m in members:
+            w = wave_depth.get(m, 0)
+            waves.setdefault(w, []).append(m)
+
+        for w in waves:
+            waves[w].sort(key=lambda n: (
+                0 if G.nodes[n].get("node_role") == "project" else
+                1 if G.nodes[n].get("node_role") == "task" else
+                2 if G.nodes[n].get("node_role") == "idea" else 3,
+                str(G.nodes[n].get("label", n)),
+            ))
+
+        max_wave = max(waves.keys(), default=0)
+        num_wave_cols = max_wave + 1
+        max_rows_in_wave = max((len(v) for v in waves.values()), default=1)
+        # Cap vertical stack per wave column at 6 before wrapping to sub-column
+        MAX_STACK = 6
+        col_subwidths: dict[int, int] = {}
+        for w in range(num_wave_cols):
+            items_in_w = waves.get(w, [])
+            sub_cols = max(1, math.ceil(len(items_in_w) / MAX_STACK))
+            col_subwidths[w] = sub_cols
+
+        total_cols = sum(col_subwidths.values())
+        eff_rows = min(MAX_STACK, max_rows_in_wave)
+        gw = max(680, 60 + total_cols * (CARD_W + COL_GAP))
+        gh = max(260, 100 + eff_rows * (CARD_H + ROW_GAP))
+
+        # JSON Canvas 1.0: Group container MUST appear before child cards for z-index
+        canvas_nodes.append({
+            "id": f"grp_c{cid}",
+            "type": "group",
+            "label": f"{comm_name} (Waves 0..{max_wave})",
+            "x": 0,
+            "y": current_gy,
+            "width": gw,
+            "height": gh,
+            "color": "5",
+        })
+
+        col_cursor_x = 30
+        for w in range(num_wave_cols):
+            items_in_w = waves.get(w, [])
+            for idx_in_w, nid in enumerate(items_in_w):
+                sub_c = idx_in_w // MAX_STACK
+                row_r = idx_in_w % MAX_STACK
+                nx_x = col_cursor_x + sub_c * (CARD_W + 30)
+                nx_y = current_gy + 68 + row_r * (CARD_H + ROW_GAP)
+                attrs = G.nodes[nid]
+                label = str(attrs.get("label") or nid)
+                role = str(attrs.get("node_role") or attrs.get("file_type") or "note")
+                exec_mode = str(attrs.get("execution_mode") or "independent")
+                due = attrs.get("due")
+                temporal = attrs.get("temporal_envelope") or {}
+                t_date = due or temporal.get("primary_date") or ""
+                t_badge = f" · 📅 {t_date}" if t_date else ""
+                status = str(attrs.get("task_status") or attrs.get("status") or "")
+                s_badge = f"`{status}` " if status else ""
+                card_text = (
+                    f"### {label[:65]}\n"
+                    f"{s_badge}`wave::{w}` `mode::{exec_mode}`{t_badge}\n"
+                    f"_{role}_ · `{Path(str(attrs.get('source_file') or '')).name}`"
+                )
+                canvas_nodes.append({
+                    "id": f"n_{nid}",
+                    "type": "text",
+                    "text": card_text,
+                    "x": nx_x,
+                    "y": nx_y,
+                    "width": CARD_W,
+                    "height": CARD_H,
+                    "color": _node_canvas_color(nid, attrs, w),
+                })
+                placed_nodes.add(nid)
+            col_cursor_x += col_subwidths[w] * (CARD_W + COL_GAP)
+
+        current_gy += gh + GROUP_GAP
+
+    # Add Cross-Channel Temporal Episodes swimlane if present
+    episodes = temporal_episodes if temporal_episodes is not None else G.graph.get("temporal_episodes", [])
+    if episodes:
+        ep_cols = max(1, min(4, len(episodes)))
+        ep_rows = math.ceil(len(episodes) / ep_cols)
+        ep_gw = max(680, 60 + ep_cols * (300 + 40))
+        ep_gh = max(240, 90 + ep_rows * (130 + 28))
+        canvas_nodes.append({
+            "id": "grp_temporal_episodes",
+            "type": "group",
+            "label": "Cross-Channel Temporal Correlation Episodes (Voice + Visual + Notes)",
+            "x": 0,
+            "y": current_gy,
+            "width": ep_gw,
+            "height": ep_gh,
+            "color": "6",
+        })
+        for ep_idx, ep in enumerate(episodes):
+            c_idx = ep_idx % ep_cols
+            r_idx = ep_idx // ep_cols
+            ep_id = ep.get("id", f"ep_{ep_idx}")
+            channels = ", ".join(ep.get("channels", []))
+            window = ep.get("window_label", "")
+            items_summary = "\n".join(f"- {it}" for it in ep.get("member_labels", [])[:4])
+            canvas_nodes.append({
+                "id": f"n_{ep_id}",
+                "type": "text",
+                "text": f"### 🕒 {ep.get('label', 'Temporal Session')}\n`{window}` · Channels: `{channels}`\n{items_summary}",
+                "x": 30 + c_idx * 340,
+                "y": current_gy + 65 + r_idx * 158,
+                "width": 300,
+                "height": 130,
+                "color": "6",
+            })
+
+    # Emit edges with JSON Canvas 1.0 directional ports (fromSide / toSide / toEnd)
+    edge_candidates: list[tuple[int, float, str, str, dict]] = []
+    for u, v, edata in G.edges(data=True):
+        src = str(edata.get("_src", u))
+        tgt = str(edata.get("_tgt", v))
+        if src not in placed_nodes or tgt not in placed_nodes or src == tgt:
+            continue
+        rel = str(edata.get("relation") or "")
+        prio = 1 if rel in ("blocks", "depends_on", "temporally_correlated_with", "parallel_with", "subtask_of") else 0
+        weight = float(edata.get("weight", 1.0))
+        edge_candidates.append((prio, weight, src, tgt, edata))
+
+    edge_candidates.sort(key=lambda x: (-x[0], -x[1]))
+    for idx_e, (_, _, src, tgt, edata) in enumerate(edge_candidates[:300]):
+        rel = str(edata.get("relation") or "references")
+        conf = str(edata.get("confidence") or "EXTRACTED")
+        edge_color = (
+            "2" if rel in ("blocks", "depends_on") else
+            "4" if rel == "parallel_with" else
+            "6" if rel == "temporally_correlated_with" else
+            "5"
+        )
+        canvas_edges.append({
+            "id": f"e_{idx_e}_{src[:20]}_{tgt[:20]}",
+            "fromNode": f"n_{src}",
+            "fromSide": "right",
+            "fromEnd": "none",
+            "toNode": f"n_{tgt}",
+            "toSide": "left",
+            "toEnd": "arrow",
+            "color": edge_color,
+            "label": f"{rel} [{conf}]",
+        })
+
+    canvas_data = {"nodes": canvas_nodes, "edges": canvas_edges}
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_text(json.dumps(canvas_data, indent=2), encoding="utf-8")  # nosec
+    return canvas_data
 
 
 def to_graphml(

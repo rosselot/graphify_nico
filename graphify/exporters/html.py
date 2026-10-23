@@ -189,10 +189,93 @@ function showInfo(nodeId) {{
   `;
 }}
 
-function focusNode(nodeId) {{
-  network.focus(nodeId, {{ scale: 1.4, animation: true }});
+// Selection cascade (stepped over CASCADE_MS): opacity only — keep community colors.
+// Wave: community lit → each hop level dims in turn (~2s total). Rest dims lightly.
+const _ORIG_COLOR = Object.fromEntries(RAW_NODES.map(n => [n.id, n.color]));
+const _ORIG_SIZE = Object.fromEntries(RAW_NODES.map(n => [n.id, n.size]));
+const _NODE_COMM = Object.fromEntries(RAW_NODES.map(n => [n.id, n.community]));
+let _cascadeTimer = null;
+let _cascadeGen = 0;
+const CASCADE_MS = 2000;
+const CASCADE_STEP = 0.2;  // opacity drop per hop level (noticeable)
+const OUTSIDE_DIM = 0.35;  // rest of graph
+const BRANCH_FLOOR = 0.25;
+const MAX_WAVE = 6;        // cap depth so each step has time to read
+
+function _hopDepths(startId, cid) {{
+  // Undirected BFS inside the community — directed 'to' often finds no children
+  // on file/symbol graphs, so the time wave never runs.
+  const depths = new Map([[startId, 0]]);
+  const q = [startId];
+  while (q.length) {{
+    const id = q.shift();
+    const d = depths.get(id);
+    for (const nid of network.getConnectedNodes(id)) {{
+      if (_NODE_COMM[nid] !== cid || depths.has(nid)) continue;
+      depths.set(nid, d + 1);
+      q.push(nid);
+    }}
+  }}
+  return depths;
+}}
+function clearCascade() {{
+  _cascadeGen++;
+  if (_cascadeTimer) {{ clearTimeout(_cascadeTimer); _cascadeTimer = null; }}
+  nodesDS.update(RAW_NODES.map(n => ({{
+    id: n.id, color: _ORIG_COLOR[n.id], opacity: 1, size: _ORIG_SIZE[n.id],
+  }})));
+}}
+function applyCascade(nodeId) {{
+  _cascadeGen++;
+  const gen = _cascadeGen;
+  if (_cascadeTimer) {{ clearTimeout(_cascadeTimer); _cascadeTimer = null; }}
+  const cid = _NODE_COMM[nodeId];
+  if (cid === undefined) return;
+  const depths = _hopDepths(nodeId, cid);
+  let maxD = 0;
+  for (const d of depths.values()) if (d > maxD) maxD = d;
+  maxD = Math.min(maxD, MAX_WAVE);
+  const nSteps = maxD + 1; // step 0 = lit+pop, steps 1..maxD = dim that level
+  const dt = CASCADE_MS / nSteps;
+  let step = 0;
+  function tick() {{
+    if (gen !== _cascadeGen) return;
+    nodesDS.update(RAW_NODES.map(n => {{
+      let opacity = 1;
+      let size = _ORIG_SIZE[n.id];
+      if (n.community !== cid) {{
+        opacity = OUTSIDE_DIM;
+      }} else if (depths.has(n.id)) {{
+        const d = Math.min(depths.get(n.id), MAX_WAVE);
+        if (d === 0) {{
+          if (step === 0) size = size * 1.4; // size pop only
+        }} else if (d <= step) {{
+          opacity = Math.max(BRANCH_FLOOR, 1 - d * CASCADE_STEP);
+        }}
+        // d > step: still full — waiting for its wave
+      }}
+      return {{ id: n.id, color: _ORIG_COLOR[n.id], opacity, size }};
+    }}));
+    step++;
+    if (step <= maxD) {{
+      _cascadeTimer = setTimeout(tick, dt);
+    }} else {{
+      nodesDS.update([{{ id: nodeId, size: _ORIG_SIZE[nodeId], opacity: 1 }}]);
+      _cascadeTimer = null;
+    }}
+  }}
+  tick();
+}}
+
+function selectAndInspect(nodeId) {{
   network.selectNodes([nodeId]);
   showInfo(nodeId);
+  applyCascade(nodeId);
+}}
+
+function focusNode(nodeId) {{
+  network.focus(nodeId, {{ scale: 1.4, animation: true }});
+  selectAndInspect(nodeId);
 }}
 
 // Neighbor links use a data attribute + one delegated listener rather than an
@@ -219,15 +302,13 @@ network.on('blurNode', () => {{
   container.style.cursor = 'default';
 }});
 container.addEventListener('click', () => {{
-  if (hoveredNodeId !== null) {{
-    showInfo(hoveredNodeId);
-    network.selectNodes([hoveredNodeId]);
-  }}
+  if (hoveredNodeId !== null) selectAndInspect(hoveredNodeId);
 }});
 network.on('click', params => {{
   if (params.nodes.length > 0) {{
-    showInfo(params.nodes[0]);
+    selectAndInspect(params.nodes[0]);
   }} else if (hoveredNodeId === null) {{
+    clearCascade();
     document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
   }}
 }});
@@ -249,8 +330,7 @@ searchInput.addEventListener('input', () => {{
     el.style.paddingLeft = '8px';
     el.onclick = () => {{
       network.focus(n.id, {{ scale: 1.5, animation: true }});
-      network.selectNodes([n.id]);
-      showInfo(n.id);
+      selectAndInspect(n.id);
       searchResults.style.display = 'none';
       searchInput.value = '';
     }};
