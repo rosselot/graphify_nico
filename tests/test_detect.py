@@ -544,7 +544,7 @@ def test_detect_converts_google_workspace_shortcuts_when_enabled(tmp_path, monke
     shortcut = tmp_path / "notes.gdoc"
     shortcut.write_text('{"doc_id":"doc-1"}', encoding="utf-8")
 
-    def fake_convert(path, out_dir, *, xlsx_to_markdown=None):
+    def fake_convert(path, out_dir, *, xlsx_to_markdown=None, root=None):
         out_dir.mkdir(parents=True, exist_ok=True)
         out = out_dir / "notes_converted.md"
         out.write_text("# Notes\n\nA converted Google Doc.", encoding="utf-8")
@@ -737,6 +737,69 @@ def test_detect_skips_graphify_own_cache(tmp_path):
 
 
 # --- #882: gitignore parent-exclusion rule for ! re-includes ---
+
+def test_anchored_root_wildcard_negation_reincludes_subtree(tmp_path):
+    """`/*` stays at the root, so `!/src/` makes the subtree walkable (#1975)."""
+    for rel in ("src/app/main.py", "src/lib/util.py", "docs/guide.md", "README.md"):
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x\n")
+    (tmp_path / ".graphifyignore").write_text("/*\n!/src/\n")
+
+    result = detect(tmp_path)
+
+    files = {
+        Path(path).relative_to(tmp_path).as_posix()
+        for paths in result["files"].values()
+        for path in paths
+    }
+    assert files == {"src/app/main.py", "src/lib/util.py"}
+
+
+def test_anchored_negation_cannot_skip_excluded_parent(tmp_path):
+    """Re-including a child cannot rescue it while its parent stays excluded."""
+    victim = tmp_path / "src" / "app" / "main.py"
+    victim.parent.mkdir(parents=True)
+    victim.write_text("x\n")
+    (tmp_path / ".graphifyignore").write_text("/*\n!/src/app/\n")
+
+    assert detect(tmp_path)["total_files"] == 0
+
+
+def test_path_pattern_single_star_does_not_cross_segment(tmp_path):
+    """A regular `*` matches one component; recursive matching requires `**`."""
+    direct = tmp_path / "src" / "main.py"
+    nested = tmp_path / "src" / "app" / "main.py"
+    nested.parent.mkdir(parents=True)
+    direct.write_text("x\n")
+    nested.write_text("x\n")
+    for pattern in ("/src/*.py", "src/*.py"):
+        (tmp_path / ".graphifyignore").write_text(f"{pattern}\n")
+        result = detect(tmp_path)
+        files = [path for paths in result["files"].values() for path in paths]
+        assert not any(path.endswith("src/main.py") for path in files)
+        assert any(path.endswith("src/app/main.py") for path in files)
+
+
+def test_directory_only_negation_does_not_reinclude_file(tmp_path):
+    """A trailing slash restricts a pattern to directories, as in gitignore."""
+    readme = tmp_path / "README.md"
+    readme.write_text("# docs\n")
+    (tmp_path / ".graphifyignore").write_text("/*\n!/README.md/\n")
+
+    assert detect(tmp_path)["total_files"] == 0
+
+
+def test_anchored_double_star_crosses_path_segments(tmp_path):
+    """`**` retains recursive gitignore matching at zero or more depths."""
+    direct = tmp_path / "src" / "generated.py"
+    nested = tmp_path / "src" / "app" / "deep" / "generated.py"
+    nested.parent.mkdir(parents=True)
+    direct.write_text("x\n")
+    nested.write_text("x\n")
+    (tmp_path / ".graphifyignore").write_text("/src/**/generated.py\n")
+
+    assert detect(tmp_path)["total_files"] == 0
 
 def test_negation_cannot_rescue_file_under_excluded_dir(tmp_path):
     """A ! re-include cannot un-ignore a file whose parent dir is excluded (#882)."""
@@ -1844,6 +1907,112 @@ def test_convert_office_file_does_not_rewrite_existing_sidecar(tmp_path, monkeyp
     second = detect_mod.convert_office_file(src, out_dir)
     assert second == first
     assert second.stat().st_mtime_ns == mtime_before
+
+
+def test_convert_office_file_sidecar_name_stable_across_checkouts(tmp_path, monkeypatch):
+    """#2059: the sidecar name must depend on the scan-root-RELATIVE path, not the
+    absolute checkout location, so the same tracked file in two clones/worktrees
+    produces the same sidecar name (no unbounded duplicates when graphify-out/ is
+    committed). Also verifies the no-root fallback matches the explicit form."""
+    monkeypatch.setattr(detect_mod, "xlsx_to_markdown", lambda p: "sheet body")
+
+    def _sidecar(root):
+        src = root / "docs" / "report.xlsx"
+        out_dir = root / "graphify-out" / "converted"
+        return detect_mod.convert_office_file(src, out_dir, root=root)
+
+    checkout_a = tmp_path / "checkout-a"
+    checkout_b = tmp_path / "somewhere-else" / "checkout-b"
+    (checkout_a / "docs").mkdir(parents=True)
+    (checkout_b / "docs").mkdir(parents=True)
+    out_a = _sidecar(checkout_a)
+    out_b = _sidecar(checkout_b)
+    assert out_a is not None and out_b is not None
+    assert out_a.name == out_b.name, "sidecar name must be stable across checkouts (#2059)"
+    assert out_a.parent != out_b.parent  # sanity: genuinely different locations
+
+    # No explicit root -> the out_dir.parent.parent fallback yields the same name.
+    fallback = detect_mod.convert_office_file(
+        checkout_a / "docs" / "report.xlsx", checkout_a / "graphify-out" / "converted"
+    )
+    assert fallback is not None and fallback.name == out_a.name
+
+
+def test_convert_office_file_hash_disambiguates_same_stem(tmp_path, monkeypatch):
+    """Two same-stem Office files in different subdirs must still get distinct
+    sidecar names — the relative-path hash preserves the disambiguation purpose."""
+    monkeypatch.setattr(detect_mod, "xlsx_to_markdown", lambda p: "body")
+    root = tmp_path / "repo"
+    (root / "a").mkdir(parents=True)
+    (root / "b").mkdir(parents=True)
+    out_dir = root / "graphify-out" / "converted"
+    out_a = detect_mod.convert_office_file(root / "a" / "report.xlsx", out_dir, root=root)
+    out_b = detect_mod.convert_office_file(root / "b" / "report.xlsx", out_dir, root=root)
+    assert out_a is not None and out_b is not None
+    assert out_a.name != out_b.name, "same-stem files in different dirs must differ (#2059)"
+
+
+def test_convert_office_file_outside_root_falls_back(tmp_path, monkeypatch):
+    """A source outside the scan root (--include, custom layouts) falls back to the
+    absolute-path hash without raising, and stays deterministic."""
+    monkeypatch.setattr(detect_mod, "docx_to_markdown", lambda p: "body")
+    root = tmp_path / "repo"
+    (root / "graphify-out" / "converted").mkdir(parents=True)
+    outside = tmp_path / "elsewhere" / "doc.docx"
+    out_dir = root / "graphify-out" / "converted"
+    out1 = detect_mod.convert_office_file(outside, out_dir, root=root)
+    out2 = detect_mod.convert_office_file(outside, out_dir, root=root)
+    assert out1 is not None and out1.name == out2.name
+
+
+def test_detect_keeps_env_source_dirs(tmp_path):
+    """#2058: a real source directory named env/ or *_env/ with no virtualenv
+    markers must be indexed, not silently pruned as a false-positive venv."""
+    src_env = tmp_path / "src_env"
+    (src_env / "env").mkdir(parents=True)
+    (src_env / "env" / "ctrl_mem_env.py").write_text("def build_env():\n    return 1\n")
+    (src_env / "other_dir").mkdir()
+    (src_env / "other_dir" / "also_real.py").write_text("def x():\n    return 2\n")
+
+    all_files = [f for files in detect(tmp_path)["files"].values() for f in files]
+    assert any("ctrl_mem_env.py" in f for f in all_files), "env/ source dir wrongly pruned (#2058)"
+    assert any("also_real.py" in f for f in all_files), "*_env/ subtree wrongly pruned (#2058)"
+
+    # Nested env/ under a scan root that IS the *_env dir (issue's exact-match case).
+    nested = [f for files in detect(src_env)["files"].values() for f in files]
+    assert any("ctrl_mem_env.py" in f for f in nested), "nested env/ pruned when scanned directly (#2058)"
+
+
+def test_detect_still_prunes_real_env_venv(tmp_path):
+    """#2058: an env/ dir that IS a real virtualenv (has markers) is still pruned,
+    and the pruned dir is recorded in the traceable pruned_noise_dirs bucket."""
+    venv = tmp_path / "env"
+    (venv / "lib").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
+    (venv / "lib" / "sixish.py").write_text("x = 1\n")
+    (tmp_path / "main.py").write_text("def main():\n    return 1\n")
+
+    result = detect(tmp_path)
+    all_files = [f for files in result["files"].values() for f in files]
+    assert not any("sixish.py" in f for f in all_files), "real venv env/ must still be pruned"
+    assert any("main.py" in f for f in all_files)
+    assert any(f"{os.sep}env{os.sep}" in d for d in result["pruned_noise_dirs"]), (
+        "pruned venv must be traceable in pruned_noise_dirs (#2058)"
+    )
+
+
+def test_detect_prunes_venv_names_without_markers(tmp_path):
+    """#2058 must not loosen the unambiguous names: venv/.venv/*_venv are still
+    pruned by name alone (no markers needed)."""
+    for name in ("venv", ".venv", "my_venv"):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "mod.py").write_text("y = 1\n")
+    (tmp_path / "app.py").write_text("def a():\n    return 1\n")
+    all_files = [f for files in detect(tmp_path)["files"].values() for f in files]
+    assert any("app.py" in f for f in all_files)
+    for name in ("venv", ".venv", "my_venv"):
+        assert not any(f"{os.sep}{name}{os.sep}" in f for f in all_files), f"{name} must stay pruned"
 
 
 def test_detect_records_unclassified_extensionless_files(tmp_path):
