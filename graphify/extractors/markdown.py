@@ -577,31 +577,21 @@ def extract_vault_markdown(path: Path) -> dict:
             })
         indent_stack.append((indent_len, task_id))
 
-        # Explicit inline depends_on::
+        # Explicit inline depends_on:: (never invent sequential blocking edges without explicit depends_on)
         if "depends_on" in inline_fields:
-            dep_target = _resolve_wikilink_or_title(inline_fields["depends_on"])
-            if dep_target and dep_target != task_id:
-                edges.append({
-                    "source": dep_target,
-                    "target": task_id,
-                    "relation": "blocks",
-                    "confidence": "EXTRACTED",
-                    "confidence_score": 1.0,
-                    "source_file": str_path,
-                    "source_location": f"L{line_num}",
-                    "weight": 1.5,
-                })
-        elif exec_mode == "sequential" and prev_seq_task_id and prev_seq_task_id != task_id:
-            edges.append({
-                "source": prev_seq_task_id,
-                "target": task_id,
-                "relation": "blocks",
-                "confidence": "INFERRED",
-                "confidence_score": 0.85,
-                "source_file": str_path,
-                "source_location": f"L{line_num}",
-                "weight": 1.3,
-            })
+            for raw_dep in [d.strip() for d in inline_fields["depends_on"].split(",") if d.strip()]:
+                dep_target = _resolve_wikilink_or_title(raw_dep)
+                if dep_target and dep_target != task_id:
+                    edges.append({
+                        "source": dep_target,
+                        "target": task_id,
+                        "relation": "blocks",
+                        "confidence": "EXTRACTED",
+                        "confidence_score": 1.0,
+                        "source_file": str_path,
+                        "source_location": f"L{line_num}",
+                        "weight": 1.5,
+                    })
 
         if exec_mode == "sequential":
             prev_seq_task_id = task_id
